@@ -53,6 +53,20 @@ public class UserDao {
         return Optional.empty();
     }
 
+    public Optional<User> findByIdForUpdate(Connection conn, long id) throws SQLException {
+        String sql = "SELECT id, mobile_number, pin_hash, full_name, balance, failed_attempts, locked_until "
+                + "FROM users WHERE id = ? FOR UPDATE";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.of(mapRow(rs));
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
     public long insert(Connection conn, User user) throws SQLException {
         String sql = "INSERT INTO users (mobile_number, pin_hash, full_name, balance) VALUES (?, ?, ?, ?) RETURNING id";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
