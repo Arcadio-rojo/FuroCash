@@ -15,6 +15,7 @@ import com.furocash.util.ReferenceNumber;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.List;
 
 public class AccountService {
 
@@ -66,4 +67,16 @@ public class AccountService {
             throw new FuroCashException("Database error", e);
         }
     }
+
+    public List<Transaction> getHistory(long userId) {
+        try (Connection conn = DBConnection.getConnection()) {
+            userDao.findById(conn, userId)
+                    .orElseThrow(() -> new UserNotFoundException("User not found"));
+            return transactionDao.findByUserId(conn, userId);
+        } catch (SQLException e) {
+            throw new FuroCashException("Database error", e);
+        }
+    }
+
+
 }
