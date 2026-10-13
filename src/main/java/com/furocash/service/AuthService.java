@@ -61,29 +61,24 @@ public class AuthService {
         }
 
         try (Connection conn = DBConnection.getConnection()) {
-            // D.2: does the mobile number exist?
             User user = userDao.findByMobile(conn, mobile)
                     .orElseThrow(() -> new InvalidCredentialsException("Mobile number is not registered"));
 
             LocalDateTime now = LocalDateTime.now();
 
-            // Is the account currently locked?
             if (user.getLockedUntil() != null) {
                 if (user.getLockedUntil().isAfter(now)) {
                     long minutes = Duration.between(now, user.getLockedUntil()).toMinutes() + 1;
                     throw new AccountLockedException("Account is locked. Try again in " + minutes + " minute(s)");
                 }
-                // The lock has expired: give the user a fresh set of attempts
                 user.setFailedAttempts(0);
                 user.setLockedUntil(null);
                 userDao.updateLoginAttempts(conn, user.getId(), 0, null);
             }
 
-            // D.3: is the PIN correct?
             if (!PinHasher.matches(pin, user.getPinHash())) {
                 int attempts = user.getFailedAttempts() + 1;
 
-                // D.4: three attempts only
                 if (attempts >= MAX_ATTEMPTS) {
                     LocalDateTime lockUntil = now.plusMinutes(LOCK_MINUTES);
                     userDao.updateLoginAttempts(conn, user.getId(), attempts, lockUntil);
@@ -93,11 +88,9 @@ public class AuthService {
 
                 userDao.updateLoginAttempts(conn, user.getId(), attempts, null);
                 int left = MAX_ATTEMPTS - attempts;
-                // D.5: message after a failed attempt
                 throw new InvalidCredentialsException("Incorrect PIN. " + left + " attempt(s) left");
             }
 
-            // Success: clear the counter if there were earlier failures
             if (user.getFailedAttempts() > 0) {
                 userDao.updateLoginAttempts(conn, user.getId(), 0, null);
                 user.setFailedAttempts(0);

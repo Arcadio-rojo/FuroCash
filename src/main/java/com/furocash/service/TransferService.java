@@ -24,7 +24,6 @@ public class TransferService {
     private final TransactionDao transactionDao = new TransactionDao();
 
     public BigDecimal transfer(long senderId, String receiverMobile, BigDecimal amount) {
-        // Validate the input before touching the database
         if (!InputValidator.isValidAmount(amount)) {
             throw new InvalidAmountException("Amount must be greater than zero, with at most 2 decimal places");
         }
@@ -35,7 +34,6 @@ public class TransferService {
         try (Connection conn = DBConnection.getConnection()) {
             conn.setAutoCommit(false);
             try {
-                // G: validate the receiver
                 User receiverLookup = userDao.findByMobile(conn, receiverMobile)
                         .orElseThrow(() -> new UserNotFoundException("Receiver not found"));
                 long receiverId = receiverLookup.getId();
@@ -44,7 +42,6 @@ public class TransferService {
                     throw new InvalidInputException("You cannot transfer money to yourself");
                 }
 
-                // Lock both rows, always the lower id first, so two opposite transfers can't deadlock
                 long firstId = Math.min(senderId, receiverId);
                 long secondId = Math.max(senderId, receiverId);
                 User first = userDao.findByIdForUpdate(conn, firstId)
@@ -54,7 +51,6 @@ public class TransferService {
                 User sender = (firstId == senderId) ? first : second;
                 User receiver = (firstId == senderId) ? second : first;
 
-                // G: validate the sender's balance
                 if (sender.getBalance().compareTo(amount) < 0) {
                     throw new InsufficientFundsException("Insufficient balance");
                 }
@@ -64,7 +60,6 @@ public class TransferService {
                 userDao.updateBalance(conn, sender.getId(), senderNewBalance);
                 userDao.updateBalance(conn, receiver.getId(), receiverNewBalance);
 
-                // Two log rows, one per user, sharing one reference number
                 String ref = ReferenceNumber.generate();
                 transactionDao.insert(conn, buildTransaction(sender.getId(), TransactionType.TRANSFER_OUT,
                         amount, "Sent to " + receiver.getMobileNumber(), ref, senderNewBalance));
