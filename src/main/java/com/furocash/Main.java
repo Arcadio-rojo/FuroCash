@@ -4,6 +4,11 @@ import com.furocash.service.AuthService;
 import com.furocash.util.DBConnection;
 import com.furocash.web.ApiExceptionHandler;
 import com.furocash.web.AuthRoutes;
+import com.furocash.web.AuthFilter;
+import com.furocash.web.AccountRoutes;
+import com.furocash.service.AccountService;
+import com.furocash.service.TransferService;
+
 import io.javalin.Javalin;
 
 import java.util.Map;
@@ -18,6 +23,8 @@ public class Main {
         });
 
         ApiExceptionHandler.mount(app);
+        AuthFilter.mount(app);
+        AccountRoutes.mount(app, new AccountService(), new TransferService());
         AuthRoutes.mount(app, new AuthService());
         app.get("/api/health", ctx -> ctx.json(Map.of("status", "UP")));
 
