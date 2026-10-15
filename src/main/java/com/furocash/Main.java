@@ -1,6 +1,8 @@
 package com.furocash;
 
 import com.furocash.service.AuthService;
+import com.furocash.service.OtpService;
+import com.furocash.sms.SmsSenders;
 import com.furocash.util.DBConnection;
 import com.furocash.web.ApiExceptionHandler;
 import com.furocash.web.AuthRoutes;
@@ -25,7 +27,7 @@ public class Main {
         ApiExceptionHandler.mount(app);
         AuthFilter.mount(app);
         AccountRoutes.mount(app, new AccountService(), new TransferService());
-        AuthRoutes.mount(app, new AuthService());
+        AuthRoutes.mount(app, new AuthService(), new OtpService(SmsSenders.fromEnvironment()));
         app.get("/api/health", ctx -> ctx.json(Map.of("status", "UP")));
 
         app.start(7070);

@@ -5,3 +5,5 @@ public class InvalidInputException extends FuroCashException {
         super(message);
     }
 }
+
+

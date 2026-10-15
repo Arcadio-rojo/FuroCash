@@ -1,15 +1,28 @@
-import { useEffect, useState } from "react";
-import { api } from "./api";
+import { useState } from "react";
+import Auth from "./screens/Auth";
+import { tokenStore } from "./api";
+import type { User } from "./api";
 
 export default function App() {
-  const [status, setStatus] = useState("checking...");
+  const [user, setUser] = useState<User | null>(null);
 
-  useEffect(() => {
-    api
-        .health()
-        .then((r) => setStatus(r.status))
-        .catch((e: Error) => setStatus("error: " + e.message));
-  }, []);
+  if (!user) {
+    return <Auth onLoggedIn={setUser} />;
+  }
 
-  return <h1>FuroCash API: {status}</h1>;
+  return (
+      <main className="screen">
+        <h1>Welcome, {user.fullName}</h1>
+        <p className="lede">Balance: {user.balance}</p>
+        <button
+            className="btn"
+            onClick={() => {
+              tokenStore.clear();
+              setUser(null);
+            }}
+        >
+          Log out
+        </button>
+      </main>
+  );
 }

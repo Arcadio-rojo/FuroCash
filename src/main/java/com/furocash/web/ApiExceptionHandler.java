@@ -26,6 +26,8 @@ public final class ApiExceptionHandler {
         if (e instanceof UserNotFoundException) return 404;
         if (e instanceof UserAlreadyExistsException) return 409;
         if (e instanceof InsufficientFundsException) return 422;
+        if (e instanceof TooManyRequestsException) return 429;
+        if (e instanceof SmsSendException) return 502;
         return 500;
     }
 }
