@@ -78,5 +78,17 @@ public class AccountService {
         }
     }
 
+    public List<Transaction> getHistory(long userId, int page, int size) {
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        int offset = Math.max(page, 0) * safeSize;
+        try (Connection conn = DBConnection.getConnection()) {
+            userDao.findById(conn, userId)
+                    .orElseThrow(() -> new UserNotFoundException("User not found"));
+            return transactionDao.findByUserId(conn, userId, safeSize, offset);
+        } catch (SQLException e) {
+            throw new FuroCashException("Database error", e);
+        }
+    }
+
 
 }

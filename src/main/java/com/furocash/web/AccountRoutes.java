@@ -36,7 +36,9 @@ public final class AccountRoutes {
 
         app.get("/api/transactions", ctx -> {
             long userId = AuthFilter.currentUserId(ctx);
-            List<TransactionResponse> history = accountService.getHistory(userId).stream()
+            int page = ctx.queryParamAsClass("page", Integer.class).getOrDefault(0);
+            int size = ctx.queryParamAsClass("size", Integer.class).getOrDefault(20);
+            List<TransactionResponse> history = accountService.getHistory(userId, page, size).stream()
                     .map(TransactionResponse::from)
                     .toList();
             ctx.json(history);

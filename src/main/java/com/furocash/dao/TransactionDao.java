@@ -59,4 +59,22 @@ public class TransactionDao {
         }
         return transactions;
     }
+
+    public List<Transaction> findByUserId(Connection conn, long userId, int limit, int offset) throws SQLException {
+        String sql = "SELECT id, user_id, type, amount, details, reference_no, balance_after, created_at "
+                + "FROM transactions WHERE user_id = ? "
+                + "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?";
+        List<Transaction> list = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, userId);
+            ps.setInt(2, limit);
+            ps.setInt(3, offset);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(mapRow(rs));
+                }
+            }
+        }
+        return list;
+    }
 }
