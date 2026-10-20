@@ -27,7 +27,7 @@ beforeEach(() => {
   meStatus = 200;
   smsError = false;
   calls = [];
-  window.location.hash = "/login";
+  window.history.replaceState(null, "", "#/login");
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string, options: RequestInit = {}) => {
@@ -63,6 +63,14 @@ beforeEach(() => {
       if (path === "/api/transactions") return reply(history);
       if (path === "/api/health")
         return reply({ status: "UP", demoCashIn: true, smsMode: "console" });
+      if (path === "/api/deposits/options")
+        return reply({
+          enabled: true,
+          minAmount: 0.01,
+          manualMaxAmount: 50000,
+          fee: 0,
+          methods: [{ value: "CASH_DEMO", label: "Cash Deposit (Demo)" }],
+        });
       if (path === "/api/deposits/demo")
         return reply({
           reference: "12345678-1234-4234-8234-123456789abc",
@@ -106,6 +114,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  localStorage.clear();
+  window.history.replaceState(null, "", "/");
   vi.unstubAllGlobals();
 });
 async function login() {

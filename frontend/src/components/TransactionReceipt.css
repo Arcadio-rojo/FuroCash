@@ -1,0 +1,112 @@
+.transaction-receipt {
+  max-width: 700px;
+  margin-inline: auto;
+  overflow-wrap: anywhere;
+}
+.transaction-receipt-brand {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 28px;
+  color: #18513e;
+  font-size: 20px;
+  font-weight: 800;
+  text-align: left;
+}
+.transaction-receipt-demo-label {
+  font-size: 12px;
+  font-weight: 500;
+  align-self: center;
+}
+.transaction-receipt-brand strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.transaction-receipt-watermark {
+  padding: 12px;
+  border: 1px solid #c6d4bc;
+  border-radius: 9px;
+  background: #f1f5eb;
+  color: #355a29;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.transaction-receipt .detail-list dd {
+  white-space: pre-wrap;
+}
+.transaction-receipt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+.transaction-receipt-actions .btn {
+  width: auto;
+  min-height: 44px;
+}
+.transaction-receipt-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 18px;
+  margin-top: 18px;
+  font-size: 13px;
+}
+.transaction-receipt-navigation a,
+.transaction-receipt-navigation button {
+  color: #18513e;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.transaction-receipt-navigation button {
+  background: transparent;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.transaction-receipt-message {
+  min-height: 20px;
+  font-size: 13px;
+}
+.tx-receipt-button {
+  display: block;
+  margin-top: 8px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tx-receipt-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+[data-theme="dark"] .transaction-receipt-brand,
+[data-theme="dark"] .transaction-receipt-navigation a,
+[data-theme="dark"] .transaction-receipt-navigation button {
+  color: #c0dfad;
+}
+[data-theme="dark"] .transaction-receipt-watermark {
+  background: #23342b;
+  border-color: #4c6544;
+  color: #d2e8bf;
+}
+@media (max-width: 540px) {
+  .transaction-receipt-actions {
+    flex-direction: column;
+  }
+  .transaction-receipt-actions .btn {
+    width: 100%;
+  }
+  .transaction-receipt .detail-list > div {
+    gap: 12px;
+  }
+  .transaction-receipt-navigation {
+    flex-direction: column;
+  }
+}

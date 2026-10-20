@@ -21,6 +21,8 @@ public final class AuthFilter {
     app.before("/api/cards/*", AuthFilter::authenticate);
     app.before("/api/users/*", AuthFilter::authenticate);
     app.before("/api/transactions", AuthFilter::authenticate);
+    app.before("/api/transactions/*", AuthFilter::authenticate);
+    app.before("/api/operations/*", AuthFilter::authenticate);
     app.before("/api/auth/me", AuthFilter::authenticate);
   }
 

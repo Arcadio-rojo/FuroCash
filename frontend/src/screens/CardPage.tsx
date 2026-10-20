@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import type { DemoCard, Receipt, Transaction } from "../api";
 import { money } from "../utils";
+import ConfirmDialog from "../components/ConfirmDialog";
 import FormField from "../components/FormField";
 import TransactionList from "../components/TransactionList";
 import {
@@ -14,6 +15,7 @@ import {
   amountError,
 } from "../components/BankingUi";
 import { useOperation } from "./useOperation";
+import LoadingState from "../components/LoadingState";
 type Action = "create" | "freeze" | "unfreeze" | "limit" | "purchase";
 export default function CardPage({
   balance,
@@ -105,7 +107,7 @@ export default function CardPage({
       </PageTitle>
       <ErrorNotice error={error} />
       {loading ? (
-        <p role="status">Getting your card…</p>
+        <LoadingState label="Getting your card…" rows={2} />
       ) : error && !card ? (
         <button className="secondary" onClick={() => void load()}>
           Retry card
@@ -134,7 +136,9 @@ export default function CardPage({
                 </strong>
                 <span className="badge">{card.status}</span>
               </div>
-              <span className="card-caption">VIRTUAL DEBIT · INTERNAL DEMO CARD</span>
+              <span className="card-caption">
+                VIRTUAL DEBIT · INTERNAL DEMO CARD
+              </span>
               <p className="card-identifier">
                 {revealed ? card.identifier : card.maskedIdentifier}
               </p>
@@ -260,59 +264,57 @@ export default function CardPage({
       )}
       <ErrorNotice error={confirm ? "" : op.error} />
       {confirm && (
-        <div className="modal-backdrop">
-          <section
-            className="money-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="card-confirm"
-          >
-            <h2 id="card-confirm">
-              {confirm === "create"
-                ? "Create demo card?"
-                : confirm === "freeze"
-                  ? "Freeze this card?"
-                  : confirm === "unfreeze"
-                    ? "Unfreeze this card?"
-                    : confirm === "limit"
-                      ? "Change daily limit?"
-                      : "Confirm demo purchase"}
-            </h2>
-            <p>
-              {confirm === "create"
-                ? "Create one internal FuroCash demo card for this account."
-                : confirm === "limit"
-                  ? `Set your daily limit to ${money(Number(limit))}.`
-                  : confirm === "purchase"
-                    ? `Pay ${money(Number(amount))} to ${merchant.trim()} from your FuroCash balance.`
-                    : confirm === "freeze"
-                      ? "Simulated purchases will be blocked until you unfreeze."
-                      : "Simulated purchases will be available again."}
-            </p>
-            <DemoNotice />
-            <ErrorNotice error={op.error} />
-            <div className="button-row">
-              <button
-                className="btn"
-                autoFocus
-                disabled={op.busy}
-                onClick={() => void apply()}
-              >
-                {op.busy ? "Working…" : "Confirm"}
-              </button>
-              <button
-                className="secondary"
-                disabled={op.busy}
-                onClick={() => {
-                  setConfirm(null);
-                  op.setError("");
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </section>
-        </div>
+        <ConfirmDialog
+          busy={op.busy}
+          onClose={() => {
+            setConfirm(null);
+            op.setError("");
+          }}
+        >
+          <h2 id="card-confirm">
+            {confirm === "create"
+              ? "Create demo card?"
+              : confirm === "freeze"
+                ? "Freeze this card?"
+                : confirm === "unfreeze"
+                  ? "Unfreeze this card?"
+                  : confirm === "limit"
+                    ? "Change daily limit?"
+                    : "Confirm demo purchase"}
+          </h2>
+          <p>
+            {confirm === "create"
+              ? "Create one internal FuroCash demo card for this account."
+              : confirm === "limit"
+                ? `Set your daily limit to ${money(Number(limit))}.`
+                : confirm === "purchase"
+                  ? `Pay ${money(Number(amount))} to ${merchant.trim()} from your FuroCash balance.`
+                  : confirm === "freeze"
+                    ? "Simulated purchases will be blocked until you unfreeze."
+                    : "Simulated purchases will be available again."}
+          </p>
+          <DemoNotice />
+          <ErrorNotice error={op.error} />
+          <div className="button-row">
+            <button
+              className="btn"
+              disabled={op.busy}
+              onClick={() => void apply()}
+            >
+              {op.busy ? "Working…" : "Confirm"}
+            </button>
+            <button
+              className="secondary"
+              disabled={op.busy}
+              onClick={() => {
+                setConfirm(null);
+                op.setError("");
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </ConfirmDialog>
       )}
     </>
   );

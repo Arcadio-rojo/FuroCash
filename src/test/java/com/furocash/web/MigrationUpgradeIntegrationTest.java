@@ -60,6 +60,7 @@ class MigrationUpgradeIntegrationTest {
           1,
           Flyway.configure()
             .dataSource(isolatedUrl, user, password)
+            .target("4")
             .load()
             .migrate()
             .migrationsExecuted

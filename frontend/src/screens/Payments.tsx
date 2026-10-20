@@ -1,6 +1,6 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { api } from "../api";
-import type { Receipt, Recipient, ResolvedQr } from "../api";
+import type { Receipt } from "../api";
 import FormField from "../components/FormField";
 import {
   PageTitle,
@@ -9,16 +9,19 @@ import {
   PaymentReceipt,
   validAmount,
   amountError,
-  errorMessage,
 } from "../components/BankingUi";
 import { money } from "../utils";
 import { useOperation } from "./useOperation";
 import { QrGenerator } from "./ScanPay";
+import LoadingState, { Spinner } from "../components/LoadingState";
+import ManualDeposit from "./ManualDeposit";
 export function Deposit({
   demo,
+  loading = false,
   onComplete,
 }: {
   demo: boolean;
+  loading?: boolean;
   onComplete: (balance: number) => void;
 }) {
   const [amount, setAmount] = useState("");
@@ -26,8 +29,28 @@ export function Deposit({
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [showQr, setShowQr] = useState(false);
   const op = useOperation();
+  const stage = receipt ? 3 : pending ? 2 : 1;
+  const steps = (
+    <ol className="deposit-steps" aria-label="Deposit progress">
+      {["Enter amount", "Review", "Complete"].map((label, index) => (
+        <li
+          key={label}
+          className={index + 1 <= stage ? "reached" : ""}
+          aria-current={index + 1 === stage ? "step" : undefined}
+        >
+          <span>{index + 1}</span>
+          {label}
+        </li>
+      ))}
+    </ol>
+  );
   if (receipt)
-    return <PaymentReceipt receipt={receipt} title="Deposit complete" />;
+    return (
+      <>
+        {steps}
+        <PaymentReceipt receipt={receipt} title="Deposit complete" />
+      </>
+    );
   return (
     <>
       <PageTitle
@@ -36,18 +59,23 @@ export function Deposit({
       >
         Add simulated funds to your FuroCash account.
       </PageTitle>
+      {steps}
       <div className="payment-grid">
         <section className="bank-panel">
           <div className="method-heading">
-            <span className="method-icon">G</span>
+            <span className="method-icon gcash-mark" aria-hidden="true">
+              G
+            </span>
             <div>
               <h2>GCash demo</h2>
-              <p>Simulated cash-in · No real money</p>
+              <p>Manual demo cash-in · PHP wallet</p>
             </div>
             <span className="badge">DEMO</span>
           </div>
           <DemoNotice />
-          {!demo ? (
+          {loading ? (
+            <LoadingState label="Checking deposit availability…" rows={2} />
+          ) : !demo ? (
             <p className="notice">
               Demo deposits are currently unavailable. Try again when demo
               funding is enabled.
@@ -55,6 +83,10 @@ export function Deposit({
           ) : pending ? (
             <>
               <dl className="detail-list">
+                <div>
+                  <dt>Method</dt>
+                  <dd>GCash demo · Manual entry</dd>
+                </div>
                 <div>
                   <dt>Amount</dt>
                   <dd>{money(pending.amount)}</dd>
@@ -67,6 +99,14 @@ export function Deposit({
                   <dt>Status</dt>
                   <dd>{pending.status}</dd>
                 </div>
+                <div>
+                  <dt>Demo service fee</dt>
+                  <dd>{money(0)}</dd>
+                </div>
+                <div>
+                  <dt>To account</dt>
+                  <dd>{pending.accountIdentifier}</dd>
+                </div>
               </dl>
               <p className="lede">
                 Your balance changes only after you explicitly simulate
@@ -76,6 +116,7 @@ export function Deposit({
               <button
                 className="btn"
                 disabled={op.busy}
+                aria-busy={op.busy}
                 onClick={() =>
                   void op.run(
                     { complete: pending.reference },
@@ -87,6 +128,7 @@ export function Deposit({
                   )
                 }
               >
+                {op.busy && <Spinner />}
                 {op.busy ? "Completing…" : "Simulate completion"}
               </button>
             </>
@@ -106,6 +148,11 @@ export function Deposit({
               }}
             >
               <fieldset disabled={op.busy}>
+                <h2>Manual demo deposit</h2>
+                <p className="deposit-description">
+                  Try the GCash-style cash-in experience with a custom amount.
+                  No GCash app, payment, or external reference is needed.
+                </p>
                 <FormField
                   id="deposit-amount"
                   label="Amount (PHP)"
@@ -116,8 +163,38 @@ export function Deposit({
                   maxLength={13}
                   required
                 />
+                <div
+                  className="amount-presets"
+                  role="group"
+                  aria-label="Quick deposit amounts"
+                >
+                  {[100, 500, 1000, 5000].map((value) => (
+                    <button
+                      type="button"
+                      className={Number(amount) === value ? "selected" : ""}
+                      aria-pressed={Number(amount) === value}
+                      aria-label={`Add ${value} pesos`}
+                      key={value}
+                      onClick={() => {
+                        setAmount(value.toFixed(2));
+                        op.setError("");
+                      }}
+                    >
+                      {money(value)}
+                    </button>
+                  ))}
+                </div>
+                <div className="deposit-summary">
+                  <span>Demo service fee</span>
+                  <strong>{money(0)}</strong>
+                </div>
+                <p className="deposit-description">
+                  Review your request, then simulate completion to add demo
+                  funds to your FuroCash balance.
+                </p>
                 <ErrorNotice error={op.error} />
-                <button className="btn">
+                <button className="btn" aria-busy={op.busy}>
+                  {op.busy && <Spinner />}
                   {op.busy ? "Preparing…" : "Review deposit"}
                 </button>
               </fieldset>
@@ -140,199 +217,8 @@ export function Deposit({
           )}
         </section>
       </div>
+      <ManualDeposit onComplete={onComplete} />
     </>
   );
 }
-export function Transfer({
-  initial,
-  onComplete,
-}: {
-  initial: ResolvedQr | null;
-  onComplete: (balance: number) => void;
-}) {
-  const [identifier, setIdentifier] = useState(
-    initial?.recipient.accountIdentifier ?? "",
-  );
-  const [recipient, setRecipient] = useState<Recipient | null>(
-    initial?.recipient ?? null,
-  );
-  const [amount, setAmount] = useState(initial?.amount ?? "");
-  const [note, setNote] = useState("");
-  const [review, setReview] = useState(false);
-  const [receipt, setReceipt] = useState<Receipt | null>(null);
-  const [finding, setFinding] = useState(false);
-  const [lookupError, setLookupError] = useState("");
-  const op = useOperation();
-  async function lookup() {
-    if (finding) return;
-    setFinding(true);
-    setLookupError("");
-    try {
-      setRecipient(await api.recipient(identifier.trim().toUpperCase()));
-    } catch (e) {
-      setLookupError(errorMessage(e));
-    } finally {
-      setFinding(false);
-    }
-  }
-  if (receipt)
-    return <PaymentReceipt receipt={receipt} title="Transfer complete" />;
-  const input = {
-    receiverAccount: recipient?.accountIdentifier,
-    amount,
-    note: note.trim(),
-    ...(initial ? { qrReference: initial.reference } : {}),
-  };
-  return (
-    <>
-      <PageTitle
-        eyebrow="MAKE SOMEONE’S DAY"
-        title={review ? "Confirm transfer" : "Transfer"}
-      >
-        Send to another FuroCash account.
-      </PageTitle>
-      <section className="bank-panel form-panel">
-        {review && recipient ? (
-          <>
-            <p className="review-label">You’re sending</p>
-            <p className="review-amount">{money(Number(amount))}</p>
-            <dl className="detail-list">
-              <div>
-                <dt>To</dt>
-                <dd>{recipient.fullName}</dd>
-              </div>
-              <div>
-                <dt>Account</dt>
-                <dd>{recipient.accountIdentifier}</dd>
-              </div>
-              <div>
-                <dt>Mobile</dt>
-                <dd>{recipient.mobileNumber}</dd>
-              </div>
-              {note && (
-                <div>
-                  <dt>Note</dt>
-                  <dd>{note}</dd>
-                </div>
-              )}
-            </dl>
-            <p className="lede">
-              Check the recipient and amount. Confirmed transfers are immediate.
-            </p>
-            <ErrorNotice error={op.error} />
-            <button
-              className="btn"
-              disabled={op.busy}
-              onClick={() =>
-                void op.run(
-                  input,
-                  (key) => api.send(input, key),
-                  (value) => {
-                    setReceipt(value);
-                    onComplete(value.balance);
-                  },
-                )
-              }
-            >
-              {op.busy ? "Sending…" : "Confirm & send"}
-            </button>
-            <button
-              className="link back-button"
-              disabled={op.busy}
-              onClick={() => {
-                setReview(false);
-                op.setError("");
-              }}
-            >
-              Edit details
-            </button>
-          </>
-        ) : (
-          <>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void lookup();
-              }}
-            >
-              <fieldset disabled={finding || !!initial}>
-                <FormField
-                  id="recipient"
-                  label="Account identifier or mobile"
-                  value={identifier}
-                  onChange={(value) => {
-                    setIdentifier(value);
-                    setRecipient(null);
-                  }}
-                  placeholder="FC-0000000000 or 09…"
-                  maxLength={32}
-                  required
-                />
-                <button
-                  className="secondary"
-                  disabled={finding || !identifier.trim()}
-                >
-                  {finding ? "Finding…" : "Find recipient"}
-                </button>
-              </fieldset>
-            </form>
-            <ErrorNotice error={lookupError} />
-            {recipient && (
-              <>
-                <div className="recipient-found">
-                  <span className="avatar">{recipient.fullName[0]}</span>
-                  <div>
-                    <strong>{recipient.fullName}</strong>
-                    <small>
-                      {recipient.accountIdentifier} · {recipient.mobileNumber}
-                    </small>
-                  </div>
-                  <span className="badge">FOUND</span>
-                </div>
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    if (!validAmount(amount)) {
-                      op.setError(amountError);
-                      return;
-                    }
-                    op.setError("");
-                    setReview(true);
-                  }}
-                >
-                  <FormField
-                    id="transfer-amount"
-                    label="Amount (PHP)"
-                    value={amount}
-                    onChange={setAmount}
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    maxLength={13}
-                    required
-                    readOnly={initial?.amount != null}
-                  />
-                  {initial?.amount != null && (
-                    <p className="subtle">
-                      The amount is fixed by this QR request.
-                    </p>
-                  )}
-                  <FormField
-                    id="transfer-note"
-                    label="Note (optional)"
-                    value={note}
-                    onChange={setNote}
-                    maxLength={140}
-                    placeholder="What’s it for?"
-                  />
-                  <ErrorNotice error={op.error} />
-                  <button className="btn">Review transfer</button>
-                </form>
-              </>
-            )}
-          </>
-        )}
-        <DemoNotice />
-      </section>
-    </>
-  );
-}
+export { default as Transfer } from "./Transfer";

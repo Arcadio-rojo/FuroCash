@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from "react";
+﻿import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../context/session";
 import BalanceCard from "../components/BalanceCard";
@@ -9,6 +9,8 @@ import ScanPay from "./ScanPay";
 import CardPage from "./CardPage";
 import ProfilePage from "./ProfilePage";
 import type { ResolvedQr, Transaction } from "../api";
+import ThemeToggle from "../components/ThemeToggle";
+import LoadingState, { Spinner } from "../components/LoadingState";
 
 export default function Dashboard({ route = "/home" }: { route?: string }) {
   const { user, logout } = useAuth();
@@ -22,6 +24,7 @@ export default function Dashboard({ route = "/home" }: { route?: string }) {
   const [qr, setQr] = useState<ResolvedQr | null>(null);
   const active = menu.find((item) => item.path === route) ?? menu[0];
   const refresh = useCallback(async () => {
+    setLoading(true);
     try {
       const [account, history, health] = await Promise.all([
         api.balance(),
@@ -41,8 +44,14 @@ export default function Dashboard({ route = "/home" }: { route?: string }) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+  const previousRoute = useRef(route);
   useEffect(() => {
-    if (route !== "/scan" && route !== "/transfer") setQr(null);
+    if (
+      (previousRoute.current === "/transfer" && route !== "/transfer") ||
+      (route !== "/scan" && route !== "/transfer")
+    )
+      setQr(null);
+    previousRoute.current = route;
   }, [route]);
   if (!user) return null;
   const onComplete = (next: number) => {
@@ -69,7 +78,14 @@ export default function Dashboard({ route = "/home" }: { route?: string }) {
   );
   return (
     <div className="bank-shell">
-      <a className="skip-link" href="#main-content">
+      <a
+        className="skip-link"
+        href="#main-content"
+        onClick={(event) => {
+          event.preventDefault();
+          document.getElementById("main-content")?.focus();
+        }}
+      >
         Skip to content
       </a>
       <aside className="bank-sidebar">
@@ -108,6 +124,7 @@ export default function Dashboard({ route = "/home" }: { route?: string }) {
             </strong>
           </span>
           <div className="header-right">
+            <ThemeToggle />
             <span className="badge">DEMO ACCOUNT</span>
             <a className="profile-link" href="#/me" aria-label="Open profile">
               <span className="avatar">
@@ -127,9 +144,10 @@ export default function Dashboard({ route = "/home" }: { route?: string }) {
             </div>
           )}
           {route === "/deposit" ? (
-            <Deposit demo={demo} onComplete={onComplete} />
+            <Deposit demo={demo} loading={loading} onComplete={onComplete} />
           ) : route === "/transfer" ? (
             <Transfer
+              balance={balance}
               initial={qr}
               onComplete={(value) => {
                 onComplete(value);
@@ -168,16 +186,25 @@ export default function Dashboard({ route = "/home" }: { route?: string }) {
                       disabled={loading}
                       onClick={() => void refresh()}
                     >
-                      <Icon name="refresh" />
+                      {loading ? <Spinner /> : <Icon name="refresh" />}
                     </button>
                   </div>
                   <div className="home-grid">
                     <div className="home-balance">
-                      <BalanceCard
-                        balance={balance}
-                        hidden={hidden}
-                        onToggle={() => setHidden(!hidden)}
-                      />
+                      {loading ? (
+                        <div className="balance-loading">
+                          <LoadingState
+                            label="Loading your balance…"
+                            rows={2}
+                          />
+                        </div>
+                      ) : (
+                        <BalanceCard
+                          balance={balance}
+                          hidden={hidden}
+                          onToggle={() => setHidden(!hidden)}
+                        />
+                      )}
                       <div className="account-caption">
                         FuroCash account{" "}
                         <span>
@@ -252,9 +279,7 @@ export default function Dashboard({ route = "/home" }: { route?: string }) {
                   )}
                 </div>
                 {loading ? (
-                  <p role="status" className="loading">
-                    Loading your activity…
-                  </p>
+                  <LoadingState label="Loading your activity…" />
                 ) : (
                   <TransactionList transactions={transactions} />
                 )}

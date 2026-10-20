@@ -17,7 +17,8 @@ export interface Transaction {
   id: number;
   type: "CASH_IN" | "TRANSFER_OUT" | "TRANSFER_IN" | "CARD_PURCHASE";
   status: "COMPLETED";
-  cardId?: number | null;
+  cardId?: string | null;
+  receiptAvailable?: boolean;
   amount: number;
   details: string;
   referenceNo: string;
@@ -39,6 +40,35 @@ export interface Receipt {
   counterparty: string | null;
   note: string | null;
   createdAt: string;
+  fee?: number | null;
+  total?: number | null;
+  method?: string | null;
+  senderAccount?: string | null;
+  senderName?: string | null;
+  recipientAccount?: string | null;
+  recipientName?: string | null;
+}
+export interface DepositOptions {
+  enabled: boolean;
+  minAmount: number;
+  manualMaxAmount: number;
+  fee: number;
+  methods: { value: string; label: string }[];
+}
+export interface TransferReview {
+  reference: string;
+  recipient: Recipient;
+  amount: number;
+  fee: number;
+  total: number;
+  balance: number;
+  note: string;
+  qrReference: string | null;
+  expiresAt: string;
+}
+export interface OperationStatus {
+  state: "COMPLETED" | "PROCESSING" | "NOT_FOUND";
+  receipt: Receipt | null;
 }
 export interface Recipient {
   accountIdentifier: string;
@@ -60,7 +90,7 @@ export interface ResolvedQr {
   purpose: "TRANSFER" | "DEPOSIT";
 }
 export interface DemoCard {
-  id: number;
+  id: string;
   identifier: string;
   maskedIdentifier: string;
   cardholderName: string;
@@ -76,6 +106,7 @@ export interface TransferInput {
   amount: string;
   note?: string;
   qrReference?: string;
+  reviewReference?: string;
 }
 export const operationKey = () => crypto.randomUUID();
 export const tokenStore = {
@@ -93,7 +124,30 @@ export class ApiError extends Error {
     this.outcomeUnknown = outcomeUnknown;
   }
 }
+const requestListeners = new Set<() => void>();
+let pendingRequests = 0;
+export const getPendingRequests = () => pendingRequests;
+export function subscribeRequests(listener: () => void) {
+  requestListeners.add(listener);
+  return () => {
+    requestListeners.delete(listener);
+  };
+}
 async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  authenticated = true,
+): Promise<T> {
+  pendingRequests++;
+  requestListeners.forEach((listener) => listener());
+  try {
+    return await performRequest<T>(path, options, authenticated);
+  } finally {
+    pendingRequests--;
+    requestListeners.forEach((listener) => listener());
+  }
+}
+async function performRequest<T>(
   path: string,
   options: RequestInit = {},
   authenticated = true,
@@ -159,6 +213,7 @@ const post = <T>(
   body: unknown,
   authenticated = false,
   key?: string,
+  signal?: AbortSignal,
 ) =>
   request<T>(
     path,
@@ -166,6 +221,7 @@ const post = <T>(
       method: "POST",
       body: JSON.stringify(body),
       headers: key ? { "Idempotency-Key": key } : {},
+      signal,
     },
     authenticated,
   );
@@ -193,6 +249,21 @@ export const api = {
     post<Receipt>("/api/transfers", { receiverMobile, amount }, true, key),
   transactions: (page = 0, size = 10) =>
     request<Transaction[]>(`/api/transactions?page=${page}&size=${size}`),
+  transactionReceipt: (reference: string) =>
+    request<Receipt>(
+      `/api/transactions/${encodeURIComponent(reference)}/receipt`,
+    ),
+  operationStatus: (key: string, signal?: AbortSignal) =>
+    request<OperationStatus>(`/api/operations/${encodeURIComponent(key)}`, {
+      signal,
+    }),
+  depositsOptions: () => request<DepositOptions>("/api/deposits/options"),
+  prepareManualDeposit: (
+    input: { amount: string; method: string; note: string },
+    key: string,
+  ) => post<Receipt>("/api/deposits/demo", input, true, key),
+  reviewTransfer: (input: TransferInput) =>
+    post<TransferReview>("/api/transfers/review", input, true),
   prepareDeposit: (amount: string, key: string) =>
     post<Receipt>(
       "/api/deposits/demo",
@@ -200,12 +271,13 @@ export const api = {
       true,
       key,
     ),
-  completeDeposit: (reference: string, key: string) =>
+  completeDeposit: (reference: string, key: string, signal?: AbortSignal) =>
     post<Receipt>(
       `/api/deposits/demo/${encodeURIComponent(reference)}/complete`,
       {},
       true,
       key,
+      signal,
     ),
   recipient: (identifier: string) =>
     post<Recipient>(
@@ -215,8 +287,8 @@ export const api = {
         : { receiverMobile: identifier },
       true,
     ),
-  send: (input: TransferInput, key: string) =>
-    post<Receipt>("/api/transfers", input, true, key),
+  send: (input: TransferInput, key: string, signal?: AbortSignal) =>
+    post<Receipt>("/api/transfers", input, true, key, signal),
   createQr: (purpose: QrPayload["purpose"], amount: string | null) =>
     post<QrPayload>("/api/qr/requests", { purpose, amount }, true),
   resolveQr: (payload: QrPayload) =>
@@ -229,19 +301,19 @@ export const api = {
     }),
   card: () => request<DemoCard | null>("/api/cards/my"),
   createCard: () => post<DemoCard>("/api/cards", {}, true),
-  cardStatus: (id: number, action: "freeze" | "unfreeze") =>
+  cardStatus: (id: string, action: "freeze" | "unfreeze") =>
     request<DemoCard>(`/api/cards/${id}/${action}`, {
       method: "PATCH",
       body: "{}",
     }),
-  cardLimit: (id: number, dailyLimit: string) =>
+  cardLimit: (id: string, dailyLimit: string) =>
     request<DemoCard>(`/api/cards/${id}/limit`, {
       method: "PATCH",
       body: JSON.stringify({ dailyLimit }),
     }),
-  cardTransactions: (id: number) =>
+  cardTransactions: (id: string) =>
     request<Transaction[]>(`/api/cards/${id}/transactions`),
-  purchase: (id: number, amount: string, merchant: string, key: string) =>
+  purchase: (id: string, amount: string, merchant: string, key: string) =>
     post<Receipt>(
       `/api/cards/${id}/simulate-purchase`,
       { amount, merchant },

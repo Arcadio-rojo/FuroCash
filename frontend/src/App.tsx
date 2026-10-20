@@ -1,5 +1,10 @@
 ﻿import { useEffect, useState } from "react";
 import { AuthProvider } from "./context/AuthContext";
+import { useLayoutEffect } from "react";
+import { initializeTheme } from "./theme";
+import ThemeToggle from "./components/ThemeToggle";
+import NetworkActivity from "./components/NetworkActivity";
+import LoadingState from "./components/LoadingState";
 import { useAuth } from "./context/session";
 import Login from "./screens/Login";
 import Register from "./screens/Register";
@@ -31,13 +36,15 @@ function Screens() {
     return (
       <main className="center-state">
         <span className="brand-mark">f.</span>
-        <p role="status">Getting your account ready…</p>
+        <LoadingState label="Getting your account ready…" rows={2} />
+        <ThemeToggle />
       </main>
     );
   if (error)
     return (
       <main className="center-state">
         <h1>Let’s reconnect.</h1>
+        <ThemeToggle />
         <p className="error" role="alert">
           {error}
         </p>
@@ -94,9 +101,13 @@ function Screens() {
   return <Login message={message} />;
 }
 export default function App() {
+  useLayoutEffect(initializeTheme, []);
   return (
-    <AuthProvider>
-      <Screens />
-    </AuthProvider>
+    <>
+      <NetworkActivity />
+      <AuthProvider>
+        <Screens />
+      </AuthProvider>
+    </>
   );
 }

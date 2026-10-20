@@ -1,6 +1,6 @@
 ﻿import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { api, tokenStore, ApiError } from "../src/api.ts";
+import { api, tokenStore, ApiError, getPendingRequests } from "../src/api.ts";
 
 const storage = new Map();
 globalThis.localStorage = {
@@ -19,6 +19,35 @@ beforeEach(() => {
       headers: { "Content-Type": "application/json" },
     });
   };
+});
+
+test("request progress waits for all response bodies and clears on failure or abort", async () => {
+  const release = [];
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: () => new Promise((resolve) => release.push(resolve)),
+  });
+  const first = api.health();
+  const second = api.health();
+  assert.equal(getPendingRequests(), 2);
+  await Promise.resolve();
+  release[0]('{"status":"UP"}');
+  await first;
+  assert.equal(getPendingRequests(), 1);
+  release[1]('{"status":"UP"}');
+  await second;
+  assert.equal(getPendingRequests(), 0);
+  globalThis.fetch = async () => {
+    throw new TypeError("Offline");
+  };
+  await assert.rejects(api.health(), ApiError);
+  assert.equal(getPendingRequests(), 0);
+  globalThis.fetch = async () => {
+    throw new DOMException("Cancelled", "AbortError");
+  };
+  await assert.rejects(api.health(), { name: "AbortError" });
+  assert.equal(getPendingRequests(), 0);
 });
 
 test("registration sends its verification code and does not require a second login", async () => {

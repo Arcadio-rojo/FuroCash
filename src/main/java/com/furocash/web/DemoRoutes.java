@@ -12,7 +12,7 @@ public final class DemoRoutes {
 
   private DemoRoutes() {}
 
-  public record DepositRequest(BigDecimal amount, String method) {}
+  public record DepositRequest(BigDecimal amount, String method, String note) {}
 
   public record RecipientRequest(
     String accountIdentifier,
@@ -24,6 +24,31 @@ public final class DemoRoutes {
   public record QrResolveRequest(JsonNode payload) {}
 
   public static void mount(Javalin app, DemoWalletService wallet) {
+    app.get("/api/deposits/options", ctx -> ctx.json(wallet.depositOptions()));
+    app.post("/api/transfers/review", ctx ->
+      ctx.json(
+        wallet.reviewTransfer(
+          AuthFilter.currentUserId(ctx),
+          body(ctx, TransferRequest.class)
+        )
+      )
+    );
+    app.get("/api/transactions/{reference}/receipt", ctx ->
+      ctx.json(
+        wallet.transactionReceipt(
+          AuthFilter.currentUserId(ctx),
+          ctx.pathParam("reference")
+        )
+      )
+    );
+    app.get("/api/operations/{key}", ctx ->
+      ctx.json(
+        wallet.operationStatus(
+          AuthFilter.currentUserId(ctx),
+          ctx.pathParam("key")
+        )
+      )
+    );
     app.post("/api/deposits/demo", ctx -> {
       var req = body(ctx, DepositRequest.class);
       ctx
@@ -33,6 +58,7 @@ public final class DemoRoutes {
             AuthFilter.currentUserId(ctx),
             req.amount(),
             req.method(),
+            req.note(),
             ctx.header("Idempotency-Key")
           )
         );

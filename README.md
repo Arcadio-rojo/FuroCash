@@ -49,6 +49,8 @@ Only public settings belong in `VITE_` variables. Database, JWT, and SMS secrets
 
 ## Try the flows
 
+Manual funding, reviewed transfers, downloadable receipts, configuration and verification are described in the [manual deposit and receipt delivery guide](docs/manual-deposit-receipts.md).
+
 The banking redesign keeps this project's existing React/Javalin architecture. See [the banking feature guide](docs/banking-demo.md) for the new pages, API contracts, and demo payment boundaries.
 
 - **Register:** enter a name, an 11-digit `09` mobile number, and a four-digit PIN twice. Enter the six-digit registration code received by SMS on that mobile number. You enter the dashboard automatically.

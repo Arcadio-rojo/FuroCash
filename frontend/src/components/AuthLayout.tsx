@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import ThemeToggle from "./ThemeToggle";
 export default function AuthLayout({
   eyebrow,
   title,
@@ -44,6 +45,9 @@ export default function AuthLayout({
         <p className="story-footer">FuroCash · Your money, your pace.</p>
       </aside>
       <main className="auth-main">
+        <div className="auth-theme">
+          <ThemeToggle />
+        </div>
         <a className="brand mobile-brand" href="#/login">
           <span className="brand-mark">f.</span> FuroCash
         </a>

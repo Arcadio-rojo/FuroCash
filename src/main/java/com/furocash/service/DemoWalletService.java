@@ -17,49 +17,121 @@ public final class DemoWalletService {
   private final TransactionDao transactions = new TransactionDao();
   private final IdempotencyService operations = new IdempotencyService();
 
+  private static final BigDecimal ZERO = new BigDecimal("0.00");
+  private static final Map<String, String> METHODS = Map.of(
+    "GCASH_DEMO",
+    "GCash (Demo)",
+    "CASH_DEMO",
+    "Cash Deposit (Demo)",
+    "BANK_TRANSFER_DEMO",
+    "Bank Transfer (Demo)",
+    "EWALLET_DEMO",
+    "E-Wallet (Demo)",
+    "OTHER_DEMO",
+    "Other (Demo)"
+  );
+
+  public Map<String, Object> depositOptions() {
+    return Map.of(
+      "enabled",
+      AppConfig.enabled("DEMO_CASH_IN"),
+      "minAmount",
+      new BigDecimal("0.01"),
+      "manualMaxAmount",
+      manualMax(),
+      "fee",
+      ZERO,
+      "methods",
+      List.of("CASH_DEMO", "BANK_TRANSFER_DEMO", "EWALLET_DEMO", "OTHER_DEMO")
+        .stream()
+        .map(m -> Map.of("value", m, "label", METHODS.get(m)))
+        .toList()
+    );
+  }
+
+  private static BigDecimal manualMax() {
+    try {
+      BigDecimal value = new BigDecimal(
+        AppConfig.get("DEMO_MANUAL_DEPOSIT_MAX", "50000")
+      );
+      BankingSupport.validAmount(value);
+      return value;
+    } catch (NumberFormatException e) {
+      throw new InvalidInputException(
+        "Invalid manual deposit maximum configuration"
+      );
+    }
+  }
+
   public Receipt prepareDeposit(
     long userId,
     BigDecimal amount,
     String method,
     String key
   ) {
+    return prepareDeposit(userId, amount, method, null, key);
+  }
+
+  public Receipt prepareDeposit(
+    long userId,
+    BigDecimal amount,
+    String method,
+    String rawNote,
+    String key
+  ) {
     fundingEnabled();
     BankingSupport.validAmount(amount);
-    if (!"GCASH_DEMO".equals(method)) throw new InvalidInputException(
-      "Select the demo GCash deposit method"
+    if (
+      method == null || !METHODS.containsKey(method)
+    ) throw new InvalidInputException("Choose a supported demo deposit method");
+    if (
+      !"GCASH_DEMO".equals(method) && amount.compareTo(manualMax()) > 0
+    ) throw new InvalidAmountException(
+      "Amount exceeds the manual deposit maximum"
     );
-    return operations.execute(
-      userId,
-      key,
-      "DEPOSIT_PREPARE",
-      Map.of("amount", decimal(amount), "method", method),
-      conn -> {
-        User user = user(conn, userId, false);
-        String reference = "DEP-" + UUID.randomUUID();
-        try (
-          var ps = conn.prepareStatement(
-            "INSERT INTO demo_deposits(reference,user_id,method,amount) VALUES (?,?,?,?)"
-          )
-        ) {
-          ps.setString(1, reference);
-          ps.setLong(2, userId);
-          ps.setString(3, method);
-          ps.setBigDecimal(4, amount);
-          ps.executeUpdate();
+    String note = validatedNote(rawNote, 150, "Deposit");
+    Map<String, Object> payload = new HashMap<>(
+      Map.of("amount", decimal(amount), "method", method)
+    );
+    if (!note.isEmpty()) payload.put("note", note);
+    return operations.execute(userId, key, "DEPOSIT_PREPARE", payload, conn -> {
+      User owner = user(conn, userId, false);
+      String reference = "DEP-" + UUID.randomUUID();
+      String created;
+      try (
+        var ps = conn.prepareStatement(
+          "INSERT INTO demo_deposits(reference,user_id,method,amount,note) VALUES (?,?,?,?,?) RETURNING created_at"
+        )
+      ) {
+        ps.setString(1, reference);
+        ps.setLong(2, userId);
+        ps.setString(3, method);
+        ps.setBigDecimal(4, amount);
+        ps.setString(5, note);
+        try (var rs = ps.executeQuery()) {
+          rs.next();
+          created = rs.getTimestamp(1).toLocalDateTime().toString();
         }
-        return receipt(
-          reference,
-          "DEPOSIT",
-          "PENDING",
-          amount,
-          user.getBalance(),
-          userId,
-          "Demo GCash",
-          "No real GCash payment",
-          LocalDateTime.now().toString()
-        );
       }
-    );
+      return new Receipt(
+        reference,
+        "DEPOSIT",
+        "PENDING",
+        amount,
+        owner.getBalance(),
+        BankingSupport.accountIdentifier(userId),
+        METHODS.get(method),
+        note,
+        created,
+        ZERO,
+        amount,
+        METHODS.getOrDefault(method, "Demo Cash-In"),
+        null,
+        null,
+        BankingSupport.accountIdentifier(userId),
+        owner.getFullName()
+      );
+    });
   }
 
   public Receipt completeDeposit(long userId, String reference, String key) {
@@ -74,9 +146,10 @@ public final class DemoWalletService {
       Map.of("reference", reference),
       conn -> {
         BigDecimal amount;
+        String method, note;
         try (
           var ps = conn.prepareStatement(
-            "SELECT amount,status,completion_response::text FROM demo_deposits WHERE reference=? AND user_id=? FOR UPDATE"
+            "SELECT amount,method,note,status,completion_response::text FROM demo_deposits WHERE reference=? AND user_id=? FOR UPDATE"
           )
         ) {
           ps.setString(1, reference);
@@ -91,31 +164,41 @@ public final class DemoWalletService {
               rs.getString("completion_response")
             );
             amount = rs.getBigDecimal("amount");
+            method = rs.getString("method");
+            note = rs.getString("note");
           }
         }
-        User user = user(conn, userId, true);
-        BigDecimal balance = user.getBalance().add(amount);
+        User owner = user(conn, userId, true);
+        BigDecimal balance = owner.getBalance().add(amount);
         users.updateBalance(conn, userId, balance);
-        addTransaction(
+        Transaction tx = addTransaction(
           conn,
           userId,
           TransactionType.CASH_IN,
           amount,
-          "Demo GCash deposit ? simulated funds",
+          METHODS.getOrDefault(method, "Demo deposit") + " - simulated funds",
           reference,
           balance
         );
-        Receipt result = receipt(
+        Receipt result = new Receipt(
           reference,
           "DEPOSIT",
           "COMPLETED",
           amount,
           balance,
-          userId,
-          "Demo GCash",
-          "No real GCash payment",
-          LocalDateTime.now().toString()
+          BankingSupport.accountIdentifier(userId),
+          METHODS.getOrDefault(method, "Demo deposit"),
+          note,
+          tx.getCreatedAt().toString(),
+          ZERO,
+          amount,
+          METHODS.getOrDefault(method, "Demo Cash-In"),
+          null,
+          null,
+          BankingSupport.accountIdentifier(userId),
+          owner.getFullName()
         );
+        persistReceipt(conn, userId, tx, result);
         try (
           var ps = conn.prepareStatement(
             "UPDATE demo_deposits SET status='COMPLETED',completed_at=NOW(),completion_response=?::jsonb WHERE reference=?"
@@ -139,11 +222,11 @@ public final class DemoWalletService {
       "CASH_IN",
       Map.of("amount", decimal(amount)),
       conn -> {
-        User user = user(conn, userId, true);
-        BigDecimal balance = user.getBalance().add(amount);
+        User owner = user(conn, userId, true);
+        BigDecimal balance = owner.getBalance().add(amount);
         users.updateBalance(conn, userId, balance);
         String ref = ReferenceNumber.generate();
-        addTransaction(
+        Transaction tx = addTransaction(
           conn,
           userId,
           TransactionType.CASH_IN,
@@ -152,17 +235,26 @@ public final class DemoWalletService {
           ref,
           balance
         );
-        return receipt(
+        Receipt result = new Receipt(
           ref,
           "DEPOSIT",
           "COMPLETED",
           amount,
           balance,
-          userId,
+          BankingSupport.accountIdentifier(userId),
           "Demo cash-in",
           "Simulated funds",
-          LocalDateTime.now().toString()
+          tx.getCreatedAt().toString(),
+          ZERO,
+          amount,
+          "Demo Cash-In",
+          null,
+          null,
+          BankingSupport.accountIdentifier(userId),
+          owner.getFullName()
         );
+        persistReceipt(conn, userId, tx, result);
+        return result;
       }
     );
   }
@@ -183,15 +275,214 @@ public final class DemoWalletService {
     }
   }
 
+  public record TransferReview(
+    String reference,
+    RecipientResponse recipient,
+    BigDecimal amount,
+    BigDecimal fee,
+    BigDecimal total,
+    BigDecimal balance,
+    String note,
+    String qrReference,
+    String expiresAt
+  ) {}
+
+  public TransferReview reviewTransfer(long senderId, TransferRequest request) {
+    if (request == null) throw new InvalidInputException(
+      "Transfer details are required"
+    );
+    BankingSupport.validAmount(request.amount());
+    String note = transferNote(request.note()),
+      qrReference = clean(request.qrReference());
+    try (var conn = DBConnection.getConnection()) {
+      User receiver = recipientUser(
+        conn,
+        request.receiverAccount(),
+        request.receiverMobile()
+      );
+      if (receiver.getId() == senderId) throw new InvalidInputException(
+        "You cannot transfer money to yourself"
+      );
+      User sender = user(conn, senderId, false);
+      if (!qrReference.isEmpty()) validateQr(
+        conn,
+        qrReference,
+        receiver.getId(),
+        request.amount(),
+        false
+      );
+      if (
+        sender.getBalance().compareTo(request.amount()) < 0
+      ) throw new InsufficientFundsException("Insufficient balance");
+      String reference = "REV-" + UUID.randomUUID();
+      String expires;
+      try (
+        var ps = conn.prepareStatement(
+          "INSERT INTO transfer_reviews(reference,user_id,recipient_id,recipient_name,amount,note,qr_reference) VALUES (?,?,?,?,?,?,?) RETURNING expires_at"
+        )
+      ) {
+        ps.setString(1, reference);
+        ps.setLong(2, senderId);
+        ps.setLong(3, receiver.getId());
+        ps.setString(4, receiver.getFullName());
+        ps.setBigDecimal(5, request.amount());
+        ps.setString(6, note);
+        ps.setString(7, qrReference);
+        try (var rs = ps.executeQuery()) {
+          rs.next();
+          expires = rs.getTimestamp(1).toLocalDateTime().toString();
+        }
+      }
+      return new TransferReview(
+        reference,
+        recipientResponse(receiver),
+        request.amount(),
+        ZERO,
+        request.amount(),
+        sender.getBalance(),
+        note,
+        qrReference,
+        expires
+      );
+    } catch (SQLException e) {
+      throw new FuroCashException("Database error", e);
+    }
+  }
+
+  private static String clean(String value) {
+    return value == null ? "" : value.trim();
+  }
+
+  private static String validatedNote(
+    String value,
+    int maxLength,
+    String kind
+  ) {
+    if (
+      value != null && value.codePoints().anyMatch(Character::isISOControl)
+    ) throw new InvalidInputException(
+      kind + " note cannot contain control characters"
+    );
+    String note = clean(value);
+    if (note.length() > maxLength) throw new InvalidInputException(
+      kind + " note must be at most " + maxLength + " characters"
+    );
+    return note;
+  }
+
+  private static String transferNote(String value) {
+    return validatedNote(value, 140, "Transfer");
+  }
+
+  private QrRecord validateQr(
+    Connection conn,
+    String reference,
+    long receiverId,
+    BigDecimal amount,
+    boolean lock
+  ) throws SQLException {
+    QrRecord qr = readQr(conn, reference, lock);
+    checkActive(qr);
+    if (
+      !"TRANSFER".equals(qr.purpose()) || qr.userId() != receiverId
+    ) throw new InvalidInputException(
+      "This QR request does not match the transfer recipient"
+    );
+    if (
+      qr.amount() != null && qr.amount().compareTo(amount) != 0
+    ) throw new InvalidInputException("The amount must match this QR request");
+    return qr;
+  }
+
+  private void checkReview(
+    Connection conn,
+    long senderId,
+    TransferRequest request,
+    User receiver,
+    String note,
+    String qrReference
+  ) throws SQLException {
+    if (request.reviewReference() == null) return;
+    try (
+      var ps = conn.prepareStatement(
+        "SELECT recipient_id,recipient_name,amount,fee,note,qr_reference,consumed_at,expires_at>NOW() AS active FROM transfer_reviews WHERE reference=? AND user_id=? FOR UPDATE"
+      )
+    ) {
+      ps.setString(1, request.reviewReference());
+      ps.setLong(2, senderId);
+      try (var rs = ps.executeQuery()) {
+        if (
+          !rs.next() ||
+          !rs.getBoolean("active") ||
+          rs.getTimestamp("consumed_at") != null ||
+          rs.getLong("recipient_id") != receiver.getId() ||
+          !rs.getString("recipient_name").equals(receiver.getFullName()) ||
+          rs.getBigDecimal("amount").compareTo(request.amount()) != 0 ||
+          rs.getBigDecimal("fee").compareTo(ZERO) != 0 ||
+          !rs.getString("note").equals(note) ||
+          !rs.getString("qr_reference").equals(qrReference)
+        ) throw new OperationConflictException(
+          "Transfer review changed or expired. Review the transfer again"
+        );
+      }
+    }
+  }
+
+  public Receipt transactionReceipt(long userId, String reference) {
+    try (
+      var conn = DBConnection.getConnection();
+      var ps = conn.prepareStatement(
+        "SELECT receipt::text FROM transaction_receipts WHERE user_id=? AND reference=?"
+      )
+    ) {
+      ps.setLong(1, userId);
+      ps.setString(2, reference);
+      try (var rs = ps.executeQuery()) {
+        if (!rs.next()) throw new UserNotFoundException(
+          "Receipt not available"
+        );
+        return IdempotencyService.parseReceipt(rs.getString(1));
+      }
+    } catch (SQLException e) {
+      throw new FuroCashException("Database error", e);
+    }
+  }
+
+  public IdempotencyService.OperationStatus operationStatus(
+    long userId,
+    String key
+  ) {
+    return operations.status(userId, key);
+  }
+
+  private void persistReceipt(
+    Connection conn,
+    long ownerId,
+    Transaction tx,
+    Receipt receipt
+  ) throws SQLException {
+    if (!"COMPLETED".equals(receipt.status())) throw new IllegalStateException(
+      "Only completed receipts may be persisted"
+    );
+    try (
+      var ps = conn.prepareStatement(
+        "INSERT INTO transaction_receipts(user_id,reference,transaction_id,receipt) VALUES (?,?,?,?::jsonb)"
+      )
+    ) {
+      ps.setLong(1, ownerId);
+      ps.setString(2, receipt.reference());
+      ps.setLong(3, tx.getId());
+      ps.setString(4, IdempotencyService.json(receipt));
+      ps.executeUpdate();
+    }
+  }
+
   public Receipt transfer(long senderId, TransferRequest request, String key) {
     if (request == null) throw new InvalidInputException(
       "Transfer details are required"
     );
     BankingSupport.validAmount(request.amount());
-    String note = request.note() == null ? "" : request.note().trim();
-    if (note.length() > 140) throw new InvalidInputException(
-      "Transfer note must be at most 140 characters"
-    );
+    String note = transferNote(request.note());
     RecipientResponse validated = validateRecipient(
       senderId,
       request.receiverAccount(),
@@ -199,10 +490,7 @@ public final class DemoWalletService {
     );
     String qrReference =
       request.qrReference() == null ? "" : request.qrReference().trim();
-    return operations.execute(
-      senderId,
-      key,
-      "TRANSFER",
+    Map<String, Object> payload = new HashMap<>(
       Map.of(
         "recipient",
         validated.accountIdentifier(),
@@ -212,86 +500,124 @@ public final class DemoWalletService {
         note,
         "qrReference",
         qrReference
-      ),
-      conn -> {
-        User receiverLookup = recipientUser(
-          conn,
-          validated.accountIdentifier(),
-          null
-        );
-        long receiverId = receiverLookup.getId();
-        QrRecord qr = null;
-        if (!qrReference.isEmpty()) {
-          qr = readQr(conn, qrReference, true);
-          checkActive(qr);
-          if (
-            !"TRANSFER".equals(qr.purpose()) || qr.userId() != receiverId
-          ) throw new InvalidInputException(
-            "This QR request does not match the transfer recipient"
-          );
-          if (
-            qr.amount() != null && qr.amount().compareTo(request.amount()) != 0
-          ) throw new InvalidInputException(
-            "The amount must match this QR request"
-          );
-        }
-        User first = user(conn, Math.min(senderId, receiverId), true),
-          second = user(conn, Math.max(senderId, receiverId), true);
-        User sender = first.getId() == senderId ? first : second,
-          receiver = first.getId() == receiverId ? first : second;
+      )
+    );
+    if (request.reviewReference() != null) payload.put(
+      "reviewReference",
+      request.reviewReference()
+    );
+    return operations.execute(senderId, key, "TRANSFER", payload, conn -> {
+      User receiverLookup = recipientUser(
+        conn,
+        validated.accountIdentifier(),
+        null
+      );
+      long receiverId = receiverLookup.getId();
+      QrRecord qr = null;
+      if (!qrReference.isEmpty()) {
+        qr = readQr(conn, qrReference, true);
+        checkActive(qr);
         if (
-          sender.getBalance().compareTo(request.amount()) < 0
-        ) throw new InsufficientFundsException("Insufficient balance");
-        BigDecimal senderBalance = sender
-            .getBalance()
-            .subtract(request.amount()),
-          receiverBalance = receiver.getBalance().add(request.amount());
-        users.updateBalance(conn, senderId, senderBalance);
-        users.updateBalance(conn, receiverId, receiverBalance);
-        String reference = ReferenceNumber.generate();
-        String suffix = note.isEmpty() ? "" : " ? " + note;
-        addTransaction(
-          conn,
-          senderId,
-          TransactionType.TRANSFER_OUT,
-          request.amount(),
-          "Sent to " + BankingSupport.accountIdentifier(receiverId) + suffix,
-          reference,
-          senderBalance
+          !"TRANSFER".equals(qr.purpose()) || qr.userId() != receiverId
+        ) throw new InvalidInputException(
+          "This QR request does not match the transfer recipient"
         );
-        addTransaction(
-          conn,
-          receiverId,
-          TransactionType.TRANSFER_IN,
-          request.amount(),
-          "Received from " +
-            BankingSupport.accountIdentifier(senderId) +
-            suffix,
-          reference,
-          receiverBalance
-        );
-        if (qr != null) try (
-          var ps = conn.prepareStatement(
-            "UPDATE qr_payment_requests SET consumed_at=NOW(),consumed_by=? WHERE reference=?"
-          )
-        ) {
-          ps.setLong(1, senderId);
-          ps.setObject(2, qr.reference());
-          ps.executeUpdate();
-        }
-        return receipt(
-          reference,
-          "TRANSFER",
-          "COMPLETED",
-          request.amount(),
-          senderBalance,
-          senderId,
-          receiver.getFullName(),
-          note,
-          LocalDateTime.now().toString()
+        if (
+          qr.amount() != null && qr.amount().compareTo(request.amount()) != 0
+        ) throw new InvalidInputException(
+          "The amount must match this QR request"
         );
       }
-    );
+      User first = user(conn, Math.min(senderId, receiverId), true),
+        second = user(conn, Math.max(senderId, receiverId), true);
+      User sender = first.getId() == senderId ? first : second,
+        receiver = first.getId() == receiverId ? first : second;
+      checkReview(conn, senderId, request, receiver, note, qrReference);
+      if (
+        sender.getBalance().compareTo(request.amount()) < 0
+      ) throw new InsufficientFundsException("Insufficient balance");
+      BigDecimal senderBalance = sender.getBalance().subtract(request.amount()),
+        receiverBalance = receiver.getBalance().add(request.amount());
+      users.updateBalance(conn, senderId, senderBalance);
+      users.updateBalance(conn, receiverId, receiverBalance);
+      String reference = ReferenceNumber.generate();
+      String suffix = note.isEmpty() ? "" : " ? " + note;
+      Transaction sent = addTransaction(
+        conn,
+        senderId,
+        TransactionType.TRANSFER_OUT,
+        request.amount(),
+        "Sent to " + BankingSupport.accountIdentifier(receiverId) + suffix,
+        reference,
+        senderBalance
+      );
+      Transaction received = addTransaction(
+        conn,
+        receiverId,
+        TransactionType.TRANSFER_IN,
+        request.amount(),
+        "Received from " + BankingSupport.accountIdentifier(senderId) + suffix,
+        reference,
+        receiverBalance
+      );
+      if (qr != null) try (
+        var ps = conn.prepareStatement(
+          "UPDATE qr_payment_requests SET consumed_at=NOW(),consumed_by=? WHERE reference=?"
+        )
+      ) {
+        ps.setLong(1, senderId);
+        ps.setObject(2, qr.reference());
+        ps.executeUpdate();
+      }
+      if (request.reviewReference() != null) try (
+        var ps = conn.prepareStatement(
+          "UPDATE transfer_reviews SET consumed_at=NOW() WHERE reference=? AND user_id=?"
+        )
+      ) {
+        ps.setString(1, request.reviewReference());
+        ps.setLong(2, senderId);
+        ps.executeUpdate();
+      }
+      Receipt result = new Receipt(
+        reference,
+        "TRANSFER",
+        "COMPLETED",
+        request.amount(),
+        senderBalance,
+        BankingSupport.accountIdentifier(senderId),
+        receiver.getFullName(),
+        note,
+        sent.getCreatedAt().toString(),
+        ZERO,
+        request.amount(),
+        "FuroCash Wallet Transfer (Demo)",
+        BankingSupport.accountIdentifier(senderId),
+        sender.getFullName(),
+        BankingSupport.accountIdentifier(receiverId),
+        receiver.getFullName()
+      );
+      Receipt incoming = new Receipt(
+        reference,
+        "TRANSFER_IN",
+        "COMPLETED",
+        request.amount(),
+        receiverBalance,
+        BankingSupport.accountIdentifier(receiverId),
+        sender.getFullName(),
+        note,
+        received.getCreatedAt().toString(),
+        ZERO,
+        request.amount(),
+        "FuroCash Wallet Transfer (Demo)",
+        BankingSupport.accountIdentifier(senderId),
+        sender.getFullName(),
+        BankingSupport.accountIdentifier(receiverId),
+        receiver.getFullName()
+      );
+      persistReceipt(conn, senderId, sent, result);
+      persistReceipt(conn, receiverId, received, incoming);
+      return result;
+    });
   }
 
   public QrPayload createQr(long userId, String purpose, BigDecimal amount) {
@@ -489,7 +815,7 @@ public final class DemoWalletService {
     );
   }
 
-  private void addTransaction(
+  private Transaction addTransaction(
     Connection conn,
     long userId,
     TransactionType type,
@@ -506,30 +832,7 @@ public final class DemoWalletService {
     tx.setReferenceNo(ref);
     tx.setBalanceAfter(balance);
     transactions.insert(conn, tx);
-  }
-
-  private static Receipt receipt(
-    String ref,
-    String kind,
-    String status,
-    BigDecimal amount,
-    BigDecimal balance,
-    long userId,
-    String counterparty,
-    String note,
-    String date
-  ) {
-    return new Receipt(
-      ref,
-      kind,
-      status,
-      amount,
-      balance,
-      BankingSupport.accountIdentifier(userId),
-      counterparty,
-      note,
-      date
-    );
+    return tx;
   }
 
   private static String decimal(BigDecimal amount) {

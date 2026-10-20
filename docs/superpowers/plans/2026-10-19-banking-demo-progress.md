@@ -17,3 +17,13 @@
 - Added a populated V3-to-V4 upgrade regression; full Java package/regression run pending.
 - Frontend task remains in progress: incomplete Scan & Pay/Card/Me and responsive styling are being finished. Do not claim completion yet.
 - Browser getState timed out; actual camera/device layout checks remain unverified unless later browser tooling succeeds.
+- Full Java regression/package passed 70 tests, including populated-schema migration preservation. QR version coercion was then reproduced (fractional version incorrectly accepted), fixed with raw JSON schema/type validation, and the complete 70-test package passed again on 2026-10-20 (.cache/banking-final.log).
+- Real QR engine regression added: generated transfer/deposit RGBA pixels decode with installed qr-scanner worker, and a blank image has no result. Passed independently; standard npm test includes it.
+- Final integration review findings being fixed: skip-link must not mutate hash route; abandoned QR context must clear; profile saves must not mutate a later session; card confirmation needs keyboard focus containment/restoration/Escape; API card IDs must be UUID strings.
+- Continuation recovered unfinished frontend test/fix work; previous agents no longer active. Last frontend full run had 18 passes and one failing test; completion is pending corrected tests/build/lint.
+- Fresh browser inventory on 2026-10-20 reports no apps/browsers. Actual device camera and rendered viewport inspection remain unavailable.
+- Task 1: complete. Wallet/QR persistence, security, concurrency, immutable history, and strict schema checks implemented and reviewed; final full Java package70 tests passed.
+- Task 2: complete. Responsive shell, Home/Transactions/Deposit/Transfer/Scan/Card/Me, real backend clients, QR generation/camera/upload, and auth preservation implemented. Standard npm test passed35 tests with exit0; production build passed; lint0 errors/5 nonblocking warnings. Logs frontend/tests-final.log, build-final.log, lint-final.log.
+- Task 3: complete. Cards/profile backend implemented, reviewed and covered by the full70-test backend run.
+- Task 4: complete. Integration review findings fixed with regressions and scoped re-review approval; populated migration and real QR pixel decoder tests passed. Setup, file inventory, APIs, dependencies and limitations documented in docs/banking-demo.md. Final static hosting check against newest dist passed2 tests (.cache/hosting-final.log); no live device/browser verification available.
+- Delivery ruling: keep changes directly in the user's existing workspace as requested. No branch merge/push or unrelated rewrite is needed; no credentials were printed or added to frontend code. Existing root .env remains ignored.

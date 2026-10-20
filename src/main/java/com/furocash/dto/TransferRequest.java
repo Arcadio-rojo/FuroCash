@@ -7,5 +7,16 @@ public record TransferRequest(
   BigDecimal amount,
   String receiverAccount,
   String note,
-  String qrReference
-) {}
+  String qrReference,
+  String reviewReference
+) {
+  public TransferRequest(
+    String receiverMobile,
+    BigDecimal amount,
+    String receiverAccount,
+    String note,
+    String qrReference
+  ) {
+    this(receiverMobile, amount, receiverAccount, note, qrReference, null);
+  }
+}

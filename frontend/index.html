@@ -7,6 +7,19 @@
     <meta name="theme-color" content="#194a3a" />
     <meta name="description" content="FuroCash local banking demo" />
     <title>FuroCash</title>
+    <script>
+      try {
+        const saved = localStorage.getItem("furocash_theme");
+        const theme =
+          saved === "dark" || saved === "light"
+            ? saved
+            : window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

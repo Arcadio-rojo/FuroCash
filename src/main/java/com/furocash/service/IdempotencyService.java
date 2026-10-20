@@ -91,6 +91,55 @@ public final class IdempotencyService {
     }
   }
 
+  public record OperationStatus(String state, Receipt receipt) {}
+
+  public OperationStatus status(long userId, String key) {
+    if (
+      key == null || !key.matches("[A-Za-z0-9][A-Za-z0-9._:-]{7,79}")
+    ) throw new InvalidInputException("Invalid operation key");
+    try (var conn = DBConnection.getConnection()) {
+      conn.setAutoCommit(false);
+      try {
+        boolean acquired;
+        try (
+          var ps = conn.prepareStatement(
+            "SELECT pg_try_advisory_xact_lock(hashtextextended(?,0))"
+          )
+        ) {
+          ps.setString(1, "furocash:idem:" + userId + ":" + key);
+          try (var rs = ps.executeQuery()) {
+            rs.next();
+            acquired = rs.getBoolean(1);
+          }
+        }
+        if (!acquired) {
+          conn.commit();
+          return new OperationStatus("PROCESSING", null);
+        }
+        try (
+          var ps = conn.prepareStatement(
+            "SELECT response::text FROM idempotency_operations WHERE user_id=? AND idempotency_key=?"
+          )
+        ) {
+          ps.setLong(1, userId);
+          ps.setString(2, key);
+          try (var rs = ps.executeQuery()) {
+            Receipt receipt = rs.next() ? parseReceipt(rs.getString(1)) : null;
+            conn.commit();
+            return receipt != null && "COMPLETED".equals(receipt.status())
+              ? new OperationStatus("COMPLETED", receipt)
+              : new OperationStatus("NOT_FOUND", null);
+          }
+        }
+      } catch (SQLException | RuntimeException e) {
+        conn.rollback();
+        throw e;
+      }
+    } catch (SQLException e) {
+      throw new FuroCashException("Database error", e);
+    }
+  }
+
   public static String json(Object value) {
     try {
       return JSON.writeValueAsString(value);

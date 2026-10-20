@@ -1,6 +1,6 @@
-﻿import type { ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { Receipt } from "../api";
-import { money } from "../utils";
+import TransactionReceipt from "./TransactionReceipt";
 export const menu = [
   { label: "Home", path: "/home", icon: "home" },
   { label: "Transactions", path: "/transactions", icon: "history" },
@@ -85,52 +85,5 @@ export function PaymentReceipt({
   receipt: Receipt;
   title: string;
 }) {
-  return (
-    <section className="bank-panel receipt">
-      <span className="receipt-check">
-        <Icon name="check" />
-      </span>
-      <span className="eyebrow">ALL SET</span>
-      <h1>{title}</h1>
-      <p className="receipt-amount">{money(receipt.amount)}</p>
-      <dl className="detail-list">
-        <div>
-          <dt>Status</dt>
-          <dd>{receipt.status}</dd>
-        </div>
-        <div>
-          <dt>Reference</dt>
-          <dd>{receipt.reference}</dd>
-        </div>
-        <div>
-          <dt>Account</dt>
-          <dd>{receipt.accountIdentifier}</dd>
-        </div>
-        {receipt.counterparty && (
-          <div>
-            <dt>With</dt>
-            <dd>{receipt.counterparty}</dd>
-          </div>
-        )}
-        {receipt.note && (
-          <div>
-            <dt>Note</dt>
-            <dd>{receipt.note}</dd>
-          </div>
-        )}
-        <div>
-          <dt>Date</dt>
-          <dd>{new Date(receipt.createdAt).toLocaleString("en-PH")}</dd>
-        </div>
-        <div>
-          <dt>Available balance</dt>
-          <dd>{money(receipt.balance)}</dd>
-        </div>
-      </dl>
-      <DemoNotice />
-      <a className="btn" href="#/transactions">
-        View transaction history <Icon name="arrow" />
-      </a>
-    </section>
-  );
+  return <TransactionReceipt receipt={receipt} title={title} />;
 }

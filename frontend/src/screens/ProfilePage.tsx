@@ -1,11 +1,23 @@
-import { useEffect, useState } from "react";
-import { api } from "../api";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { api, tokenStore } from "../api";
 import type { User } from "../api";
 import { useAuth } from "../context/session";
 import FormField from "../components/FormField";
 import { PageTitle, ErrorNotice, errorMessage } from "../components/BankingUi";
+import LoadingState from "../components/LoadingState";
 export default function ProfilePage() {
-  const { logout, updateUser } = useAuth();
+  const { user, logout, updateUser } = useAuth();
+  const session = useRef({ mounted: false, userId: user?.id });
+  useLayoutEffect(() => {
+    session.current.userId = user?.id;
+  }, [user?.id]);
+  useLayoutEffect(() => {
+    const state = session.current;
+    state.mounted = true;
+    return () => {
+      state.mounted = false;
+    };
+  }, []);
   const [profile, setProfile] = useState<User | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -38,18 +50,26 @@ export default function ProfilePage() {
       setError("Enter your full name.");
       return;
     }
+    const token = tokenStore.get();
+    const userId = user?.id;
+    const current = () =>
+      session.current.mounted &&
+      !!token &&
+      tokenStore.get() === token &&
+      session.current.userId === userId;
     setBusy(true);
     setError("");
     setSaved(false);
     try {
       const value = await api.updateProfile(name.trim(), email.trim() || null);
+      if (!current() || value.id !== userId) return;
       setProfile(value);
       updateUser(value);
       setSaved(true);
     } catch (e) {
-      setError(errorMessage(e));
+      if (current()) setError(errorMessage(e));
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   }
   return (
@@ -134,7 +154,7 @@ export default function ProfilePage() {
               Retry profile
             </button>
           ) : (
-            <p role="status">Loading your details…</p>
+            <LoadingState label="Loading your details…" />
           )}
         </section>
         <section className="bank-panel soft-panel">
