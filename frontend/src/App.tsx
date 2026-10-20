@@ -1,28 +1,102 @@
-import { useState } from "react";
-import Auth from "./screens/Auth";
-import { tokenStore } from "./api";
-import type { User } from "./api";
-
-export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-
-  if (!user) {
-    return <Auth onLoggedIn={setUser} />;
-  }
-
-  return (
-      <main className="screen">
-        <h1>Welcome, {user.fullName}</h1>
-        <p className="lede">Balance: {user.balance}</p>
-        <button
-            className="btn"
-            onClick={() => {
-              tokenStore.clear();
-              setUser(null);
-            }}
-        >
-          Log out
+﻿import { useEffect, useState } from "react";
+import { AuthProvider } from "./context/AuthContext";
+import { useAuth } from "./context/session";
+import Login from "./screens/Login";
+import Register from "./screens/Register";
+import type { Registration } from "./screens/Register";
+import VerifyOtp from "./screens/VerifyOtp";
+import ForgotPin from "./screens/ForgotPin";
+import ResetPin from "./screens/ResetPin";
+import Dashboard from "./screens/Dashboard";
+import ProtectedRoute from "./components/ProtectedRoute";
+function Screens() {
+  const { user, loading, error, retry, logout } = useAuth();
+  const [route, setRoute] = useState(() => location.hash.slice(1) || "/login");
+  const [registration, setRegistration] = useState<Registration | null>(null);
+  const [recoveryMobile, setRecoveryMobile] = useState("");
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    const change = () => {
+      const next = location.hash.slice(1) || "/login";
+      setRoute(next);
+      if (next !== "/verify" && next !== "/register") setRegistration(null);
+    };
+    window.addEventListener("hashchange", change);
+    return () => window.removeEventListener("hashchange", change);
+  }, []);
+  useEffect(() => {
+    document.title = `${user ? "Dashboard" : route === "/register" ? "Create account" : route.includes("pin") ? "PIN recovery" : "Welcome"} · FuroCash`;
+  }, [user, route]);
+  if (loading)
+    return (
+      <main className="center-state">
+        <span className="brand-mark">f.</span>
+        <p role="status">Getting your account ready…</p>
+      </main>
+    );
+  if (error)
+    return (
+      <main className="center-state">
+        <h1>Let’s reconnect.</h1>
+        <p className="error" role="alert">
+          {error}
+        </p>
+        <button className="btn" onClick={retry}>
+          Try again
+        </button>
+        <button className="link" onClick={logout}>
+          Return to login
         </button>
       </main>
+    );
+  if (user && route !== "/forgot-pin" && route !== "/reset-pin")
+    return (
+      <ProtectedRoute>
+        <Dashboard route={route} />
+      </ProtectedRoute>
+    );
+  if (route === "/register")
+    return (
+      <Register
+        onCodeSent={(data) => {
+          setRegistration(data);
+          location.hash = "/verify";
+        }}
+      />
+    );
+  if (route === "/verify" && registration)
+    return (
+      <VerifyOtp
+        registration={registration}
+        onComplete={() => setRegistration(null)}
+      />
+    );
+  if (route === "/forgot-pin")
+    return (
+      <ForgotPin
+        onCodeSent={(mobile) => {
+          setRecoveryMobile(mobile);
+          location.hash = "/reset-pin";
+        }}
+      />
+    );
+  if (route === "/reset-pin" && recoveryMobile)
+    return (
+      <ResetPin
+        mobile={recoveryMobile}
+        onComplete={() => {
+          setRecoveryMobile("");
+          setMessage("PIN updated. Log in with your new PIN.");
+          location.hash = "/login";
+        }}
+      />
+    );
+  return <Login message={message} />;
+}
+export default function App() {
+  return (
+    <AuthProvider>
+      <Screens />
+    </AuthProvider>
   );
 }

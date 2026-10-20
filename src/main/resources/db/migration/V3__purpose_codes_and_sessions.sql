@@ -1,0 +1,6 @@
+ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE otp_codes ADD COLUMN purpose VARCHAR(20) NOT NULL DEFAULT 'REGISTER';
+ALTER TABLE otp_codes ADD COLUMN consumed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE otp_codes DROP CONSTRAINT otp_codes_pkey;
+ALTER TABLE otp_codes ADD PRIMARY KEY (mobile_number, purpose);
+ALTER TABLE otp_codes ADD CONSTRAINT otp_purpose_check CHECK (purpose IN ('REGISTER', 'RESET_PIN'));

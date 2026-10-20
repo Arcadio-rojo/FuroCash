@@ -79,6 +79,7 @@ public class AccountService {
     }
 
     public List<Transaction> getHistory(long userId, int page, int size) {
+        if(page<0 || page>1000000)throw new com.furocash.exception.InvalidInputException("Page must be between 0 and 1000000");
         int safeSize = Math.min(Math.max(size, 1), 100);
         int offset = Math.max(page, 0) * safeSize;
         try (Connection conn = DBConnection.getConnection()) {

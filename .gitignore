@@ -44,3 +44,18 @@ build/
 node_modules/
 
 gc.log
+gc.log.*
+.cache/
+.env.*
+!.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+
+# Local Spring Boot secrets
+application-local.properties
+**/application-local.properties
+
+# Frontend build output
+frontend/dist/

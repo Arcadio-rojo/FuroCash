@@ -5,6 +5,12 @@ import java.time.LocalDateTime;
 //encupsolation
 public class Transaction {
     private long id;
+    private String status = "COMPLETED";
+    private String cardId;
+    public String getStatus(){return status;}
+    public void setStatus(String status){this.status=status;}
+    public String getCardId(){return cardId;}
+    public void setCardId(String cardId){this.cardId=cardId;}
     private long userId;
     private TransactionType type;
     private BigDecimal amount;

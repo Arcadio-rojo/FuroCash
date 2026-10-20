@@ -12,6 +12,8 @@ public class TransactionDao {
     private Transaction mapRow(ResultSet rs) throws SQLException {
         Transaction t = new Transaction();
         t.setId(rs.getLong("id"));
+        t.setStatus(rs.getString("status"));
+        t.setCardId(rs.getString("card_id"));
         t.setUserId(rs.getLong("user_id"));
         t.setType(TransactionType.valueOf(rs.getString("type")));
         t.setAmount(rs.getBigDecimal("amount"));
@@ -46,7 +48,7 @@ public class TransactionDao {
     }
 
     public List<Transaction> findByUserId(Connection conn, long userId) throws SQLException {
-        String sql = "SELECT id, user_id, type, amount, details, reference_no, balance_after, created_at FROM transactions WHERE user_id = ? ORDER BY created_at DESC";
+        String sql = "SELECT id, user_id, type, amount, details, reference_no, balance_after, created_at, status, card_id FROM transactions WHERE user_id = ? ORDER BY created_at DESC";
         List<Transaction> transactions = new ArrayList<>();
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -61,7 +63,7 @@ public class TransactionDao {
     }
 
     public List<Transaction> findByUserId(Connection conn, long userId, int limit, int offset) throws SQLException {
-        String sql = "SELECT id, user_id, type, amount, details, reference_no, balance_after, created_at "
+        String sql = "SELECT id, user_id, type, amount, details, reference_no, balance_after, created_at, status, card_id "
                 + "FROM transactions WHERE user_id = ? "
                 + "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?";
         List<Transaction> list = new ArrayList<>();
