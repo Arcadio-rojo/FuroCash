@@ -95,14 +95,7 @@ export default function Dashboard({ route = "/home" }: { route?: string }) {
         <span className="nav-label">YOUR EVERYDAY, SIMPLIFIED</span>
         {nav()}
         <div className="sidebar-bottom">
-          <div className="demo-note">
-            <span className="badge">YOUR DEMO SPACE</span>
-            <p>
-              A little room to explore.
-              <br />
-              All funds are simulated.
-            </p>
-          </div>
+
           <button className="logout" onClick={logout}>
             Log out <Icon name="arrow" />
           </button>
@@ -125,7 +118,7 @@ export default function Dashboard({ route = "/home" }: { route?: string }) {
           </span>
           <div className="header-right">
             <ThemeToggle />
-            <span className="badge">DEMO ACCOUNT</span>
+
             <a className="profile-link" href="#/me" aria-label="Open profile">
               <span className="avatar">
                 {user.fullName.charAt(0).toUpperCase()}

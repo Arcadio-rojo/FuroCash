@@ -69,6 +69,10 @@
   min-width: 0;
 }
 .bank-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+
   height: 92px;
   border-bottom: 1px solid #e2e8e4;
   display: flex;
